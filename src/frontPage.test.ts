@@ -98,3 +98,14 @@ describe("GET /api/front-page", () => {
     expect(res.status).toBe(502);
   });
 });
+
+describe("the page", () => {
+  it("serves the front page shell, its script and the vendored Preact", async () => {
+    const app = createApp("http://paper");
+    const index = await request(app).get("/");
+    expect(index.status).toBe(200);
+    expect(index.text).toContain('src="/app.js"');
+    expect((await request(app).get("/app.js")).text).toContain("/api/front-page");
+    expect((await request(app).get("/vendor/preact-htm.js")).text).toContain("htmPreact");
+  });
+});
