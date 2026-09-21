@@ -1,10 +1,14 @@
 import express from "express";
+import { fileURLToPath } from "node:url";
 import { buildFrontPage, type Article, type Config } from "./frontPage.js";
 
 // The live paper is still written and served by the old `newspaper` app; the
 // new one reads it over the cluster network until M5 moves the data across.
+const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
+
 export function createApp(newspaperUrl: string, fetchImpl: typeof fetch = fetch) {
   const app = express();
+  app.use(express.static(PUBLIC_DIR));
 
   app.get("/healthz", (_req, res) => {
     res.status(200).json({ status: "ok" });
