@@ -105,7 +105,55 @@ describe("the page", () => {
     const index = await request(app).get("/");
     expect(index.status).toBe(200);
     expect(index.text).toContain('src="/app.js"');
-    expect((await request(app).get("/app.js")).text).toContain("/api/front-page");
+    const js = (await request(app).get("/app.js")).text;
+    expect(js).toContain("/api/front-page");
+    expect(js).toContain("/api/full-text/");
     expect((await request(app).get("/vendor/preact-htm.js")).text).toContain("htmPreact");
+  });
+});
+
+describe("the article view's routes", () => {
+  const ID = "art-0123456789abcdef";
+  const seen: string[] = [];
+  const paper = (async (url: string) => {
+    seen.push(String(url));
+    if (String(url).endsWith("/api/articles")) return new Response(JSON.stringify({ articles: [art(ID, "Space")] }));
+    if (String(url).endsWith(`/api/full-text/${ID}`)) return new Response(JSON.stringify({ full_text_en: "one\n\ntwo" }));
+    return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+  }) as unknown as typeof fetch;
+
+  it("finds one story in the live paper", async () => {
+    const res = await request(createApp("http://paper", paper)).get(`/api/article/${ID}`);
+    expect(res.status).toBe(200);
+    expect(res.body.category).toBe("Space");
+    const missing = await request(createApp("http://paper", paper)).get("/api/article/art-ffffffffffffffff");
+    expect(missing.status).toBe(404);
+  });
+
+  it("passes the full text through from the paper, status and all", async () => {
+    const app = createApp("http://paper", paper);
+    const res = await request(app).get(`/api/full-text/${ID}`);
+    expect(res.status).toBe(200);
+    expect(res.body.full_text_en).toBe("one\n\ntwo");
+    expect(seen).toContain(`http://paper/api/full-text/${ID}`);
+    expect((await request(app).get("/api/full-text/art-ffffffffffffffff")).status).toBe(404);
+  });
+
+  it("refuses anything that is not an article id before it reaches the paper", async () => {
+    seen.length = 0;
+    const app = createApp("http://paper", paper);
+    for (const bad of ["x", "art-XYZ", "..%2Fconfig", "art-0123456789abcdef0"]) {
+      expect((await request(app).get(`/api/full-text/${bad}`)).status).toBe(400);
+      expect((await request(app).get(`/api/article/${bad}`)).status).toBe(400);
+    }
+    expect(seen).toEqual([]);
+  });
+
+  it("says so when the paper does not answer", async () => {
+    const down = (async () => {
+      throw new Error("ECONNREFUSED");
+    }) as unknown as typeof fetch;
+    expect((await request(createApp("http://paper", down)).get(`/api/full-text/${ID}`)).status).toBe(502);
+    expect((await request(createApp("http://paper", down)).get(`/api/article/${ID}`)).status).toBe(502);
   });
 });
