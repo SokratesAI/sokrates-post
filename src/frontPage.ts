@@ -2,12 +2,16 @@
 // (deployments/agents/newspaper/configmaps.yaml) so the new app starts at
 // parity (M1 of projects/sokrates/projects/nova/sokrates-post-rebuild.md).
 // Same window, same order and same editor: one lead, up to eight top stories
-// with at most two per section, everything else as briefs. M2 replaces the
-// ranking with the taste model; until then this must match what he reads.
+// with at most two per section, everything else as briefs. M2 adds the taste
+// model on top as one bounded term in the editor's score — with an empty
+// reading log it contributes exactly 0 and this stays byte-identical to M1.
+
+import { buildTaste, type Taste } from "./taste.js";
 
 export interface Article {
   _id: string;
   category?: string;
+  topic?: string;
   title_en?: string;
   body_en?: string;
   source_name?: string;
@@ -46,7 +50,12 @@ export const STOCK_IMAGE_SOURCES = 3;
 
 const freshness = (a: Article) => a.published_at || a.generated_at || a.date || "";
 
-export function buildFrontPage(articles: Article[], config: Config, now = Date.now()): FrontPage {
+export function buildFrontPage(
+  articles: Article[],
+  config: Config,
+  now = Date.now(),
+  taste: Taste = buildTaste(null),
+): FrontPage {
   const cat = (c?: string) => config.categories?.[c || ""] || {};
   const boost = (c?: string) => cat(c).boost || 0;
   const liked = new Map<string, number>();
@@ -81,7 +90,7 @@ export function buildFrontPage(articles: Article[], config: Config, now = Date.n
     const newest = visible.reduce((m, a) => ((a.date || "") > m ? a.date || "" : m), "");
     page = newest ? visible.filter((a) => a.date === newest) : [];
   }
-  return edit(interleave(page), articles, net, boost);
+  return edit(interleave(page), articles, net, boost, taste);
 }
 
 function interleave(articles: Article[]): Article[] {
@@ -111,6 +120,7 @@ function edit(
   all: Article[],
   net: Map<string, number>,
   boost: (c?: string) => number,
+  taste: Taste,
 ): FrontPage {
   const sources = new Map<string, Set<string>>();
   for (const a of all) {
@@ -121,7 +131,9 @@ function edit(
   const score = (a: Article) => {
     const votes = Math.max(-3, Math.min(3, net.get(a.category || "") || 0));
     const own = a.image_url && (sources.get(a.image_url)?.size || 0) < STOCK_IMAGE_SOURCES;
-    return 3 * boost(a.category) + votes + (own ? 1 : 0) + (a.has_full_text ? 1 : 0);
+    return (
+      3 * boost(a.category) + votes + (own ? 1 : 0) + (a.has_full_text ? 1 : 0) + taste.lift(a)
+    );
   };
   const ranked = list.map((a, i) => ({ a, i, s: score(a) })).sort((x, y) => y.s - x.s || x.i - y.i);
   const perCategory = new Map<string, number>();
