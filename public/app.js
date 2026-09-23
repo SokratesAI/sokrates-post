@@ -12,6 +12,18 @@ function markRead(id) {
   localStorage.setItem(READ_KEY, JSON.stringify([...READ_IDS]));
 }
 
+// The reading log (POST /api/events). Opening a story is the signal M2's taste
+// model learns from -- he votes on 2.7% of articles and opens far more than
+// that. Fire-and-forget: a story must still open if the log is unreachable.
+function record(kind, a) {
+  if (!a || !a._id) return;
+  fetch("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, id: a._id, category: a.category, topic: a.topic }),
+  }).catch(() => {});
+}
+
 // Where the front page was scrolled to when a story was opened, so Back lands
 // on the same story instead of the masthead.
 let frontScroll = 0;
@@ -99,7 +111,11 @@ function FullText({ a }) {
     if (!a.has_full_text) return;
     fetch(`/api/full-text/${a._id}`)
       .then((r) => r.json())
-      .then((d) => (d.full_text_en ? setText(d.full_text_en) : Promise.reject(new Error(d.error || "empty"))))
+      .then((d) => {
+        if (!d.full_text_en) return Promise.reject(new Error(d.error || "empty"));
+        setText(d.full_text_en);
+        record("full-text", a);
+      })
       .catch(() => setFailed(true));
   }, [a._id]);
   if (!a.has_full_text) return null;
@@ -128,7 +144,9 @@ function ArticleView({ id, page }) {
       .then(setFetched, (e) => setError(e.message));
   }, [id]);
   useEffect(() => {
-    if (a) markRead(a._id);
+    if (!a) return;
+    markRead(a._id);
+    record("open", a);
   }, [a && a._id]);
   if (!a) return html`<div class="empty">${error ? `Article ${error}.` : "Loading…"}</div>`;
   const domain = domainFromUrl(a.source_url);
