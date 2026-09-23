@@ -91,10 +91,21 @@ export function buildTaste(summary: Summary | null | undefined): Taste {
   // from and impressions to divide by. Opens with no impressions is a log
   // written by something that never reported a front page, and a rate over
   // nothing is not a small number, it is no number.
+  //
+  // The numerator counts only keys that were also recorded as shown. An open
+  // on a key no front page ever carried has no denominator of its own and
+  // cannot be part of an opens-per-impression rate -- and the live log holds
+  // exactly one such row, my own probe under the category `Probe`, whose
+  // article id is not in the newspaper's store at all. Without this filter
+  // that single junk row gives the whole category axis a non-zero base rate,
+  // every category that was genuinely on screen scores below it, and the model
+  // reorders the front page while believing it has learned nothing. Cycle
+  // 2083 wrote that the model would have to discard that row; this is where.
+  const counted = (opens: Record<string, number>, shown: Record<string, number>) =>
+    Object.entries(opens).reduce((sum, [k, v]) => sum + (shown[k] ? v : 0), 0);
   const rate = (opens: Record<string, number>, shown: Record<string, number>) => {
     const d = total(shown);
-    const n = total(opens);
-    return d > 0 ? n / d : 0;
+    return d > 0 ? counted(opens, shown) / d : 0;
   };
   const topicBase = rate(summary.byTopic, summary.shownByTopic);
   const categoryBase = rate(summary.byCategory, summary.shownByCategory);
@@ -105,7 +116,9 @@ export function buildTaste(summary: Summary | null | undefined): Taste {
   // and nothing opened. There is nothing to learn from it and nothing to say.
   if (!byTopic && !byCategory) return NEUTRAL;
 
-  const opens = total(summary.byTopic) + total(summary.byCategory);
+  const opens =
+    counted(summary.byTopic, summary.shownByTopic) +
+    counted(summary.byCategory, summary.shownByCategory);
   const shown = total(summary.shownByTopic) + total(summary.shownByCategory);
 
   return {
