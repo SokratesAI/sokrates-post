@@ -12,16 +12,33 @@ function markRead(id) {
   localStorage.setItem(READ_KEY, JSON.stringify([...READ_IDS]));
 }
 
-// The reading log (POST /api/events). Opening a story is the signal M2's taste
-// model learns from -- he votes on 2.7% of articles and opens far more than
-// that. Fire-and-forget: a story must still open if the log is unreachable.
-function record(kind, a) {
-  if (!a || !a._id) return;
+// The reading log (POST /api/events). Fire-and-forget: a story must still open
+// if the log is unreachable.
+function send(body) {
   fetch("/api/events", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind, id: a._id, category: a.category, topic: a.topic }),
+    body: JSON.stringify(body),
   }).catch(() => {});
+}
+
+// Opening a story is the signal M2's taste model learns from.
+function record(kind, a) {
+  if (!a || !a._id) return;
+  send({ kind, id: a._id, category: a.category, topic: a.topic });
+}
+
+// What was on screen. Without it, opens per topic measure what the paper
+// prints most rather than what he likes. Sent once per front-page fetch, which
+// is once per page load -- coming back from a story re-renders the front page
+// but does not re-fetch it, so the denominator is not inflated by navigation.
+function recordFrontPage(page) {
+  const shown = [page.lead, ...(page.stories || []), ...(page.briefs || [])].filter((a) => a && a._id);
+  if (!shown.length) return;
+  send({
+    kind: "front-page",
+    items: shown.map((a) => ({ id: a._id, category: a.category, topic: a.topic })),
+  });
 }
 
 // Where the front page was scrolled to when a story was opened, so Back lands
@@ -179,7 +196,10 @@ function App() {
     window.addEventListener("hashchange", onHash);
     fetch("/api/front-page")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setPage, (e) => setError(e.message));
+      .then((p) => {
+        setPage(p);
+        recordFrontPage(p);
+      }, (e) => setError(e.message));
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   const date = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
