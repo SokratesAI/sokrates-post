@@ -27,15 +27,43 @@ describe("buildTaste", () => {
     expect(t.lift({ topic: "anything", category: "anything" })).toBe(0);
   });
 
-  it("is neutral on the log as it stands live: impressions but no opens", () => {
-    // 2026-09-23: one probe open under category `Probe` and one headless
-    // front-page load. This is the state the model ships into.
+  it("is neutral on the log as it stands live, probe row and all", () => {
+    // The exact shape of `GET /api/events/summary` on 2026-09-23 16:05 Oslo:
+    // one probe `open` under a category no front page has ever carried, and
+    // one headless front-page load. The earlier version of this test left the
+    // probe out and passed for the wrong reason -- a positive guaranteed in
+    // advance -- while the live log made the model think it had learned
+    // something and quietly demote every category that was really on screen.
     const t = buildTaste(
-      summary({ events: 1, shownByTopic: { RSS: 90, "Breaking news": 5 }, shownByCategory: { World: 95 } }),
+      summary({
+        events: 2,
+        byKind: { open: 1, "front-page": 1 },
+        byCategory: { Probe: 1 },
+        shownByTopic: { RSS: 90, "Breaking news": 5, "World news today": 5 },
+        shownByCategory: { World: 95, Technology: 5 },
+      }),
     );
     expect(t.informed).toBe(false);
     expect(t.lift({ topic: "RSS" })).toBe(0);
-    expect(t.lift({ topic: "Breaking news" })).toBe(0);
+    expect(t.lift({ topic: "Breaking news", category: "World" })).toBe(0);
+    expect(t.lift({ category: "Technology" })).toBe(0);
+    expect(t.lift({ category: "Probe" })).toBe(0);
+  });
+
+  it("ignores an open on something no front page ever carried", () => {
+    // Same failure one step on: a real signal exists, and a junk row must not
+    // dilute the baseline every real topic is measured against.
+    const withJunk = buildTaste(
+      summary({
+        byTopic: { Chess: 40, Ghost: 99 },
+        shownByTopic: { Chess: LOTS, Football: LOTS },
+      }),
+    );
+    const without = buildTaste(
+      summary({ byTopic: { Chess: 40 }, shownByTopic: { Chess: LOTS, Football: LOTS } }),
+    );
+    expect(withJunk.lift({ topic: "Chess" })).toBe(without.lift({ topic: "Chess" }));
+    expect(withJunk.baseline).toBe(without.baseline);
   });
 
   it("is neutral when opens exist but nothing was ever recorded as shown", () => {
