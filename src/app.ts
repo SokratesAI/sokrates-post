@@ -18,8 +18,12 @@ export function createApp(
   const app = express();
   const events = new EventLog(dataDir);
   app.use(express.static(PUBLIC_DIR));
-  // Events are tiny; a large body here is a mistake or a flood, not a reading.
-  app.use(express.json({ limit: "8kb" }));
+  // An open is tiny; a front-page event carries the whole rendered page. The
+  // live one is 237 stories and 26kb, and the worst body the parser will store
+  // is 300 items at the longest labels it accepts, about 57kb. 128kb leaves
+  // room for that and still refuses a flood -- and the client swallows errors,
+  // so a limit that clipped a real event would lose data in silence.
+  app.use(express.json({ limit: "128kb" }));
 
   app.get("/healthz", (_req, res) => {
     res.status(200).json({ status: "ok" });
