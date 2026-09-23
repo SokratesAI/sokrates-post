@@ -62,11 +62,17 @@ export interface Summary {
 // The newspaper's own id shape, same as app.ts refuses on.
 const ARTICLE_ID = /^art-[0-9a-f]{16}$/;
 const LABEL_MAX = 80;
-// The front page renders a lead, ~10 stories and ~20 briefs. 60 is well clear
-// of that and still bounds the body: the request is TRUNCATED to it rather
-// than refused, because the client fires and forgets and swallows a 400, so a
-// refusal here would be a month of silence rather than an error anybody sees.
-const ITEMS_MAX = 60;
+// An impression here means "was in the page the browser rendered", not "was
+// scrolled into view" -- tracking the second one is a much larger change and
+// the first is uniform across topics within one load, which is what the ratio
+// needs. The live front page carries 237 stories and 26kb of ids and labels,
+// measured 2026-09-23; an earlier draft of this capped at 60 on a guess, which
+// would have dropped 177 of them AND kept the top of the page, biasing the
+// denominator toward exactly what it exists to correct for. 300 clears the
+// real page with headroom. The request is TRUNCATED rather than refused,
+// because the client fires and forgets and swallows a 400, so a refusal here
+// would be a month of silence rather than an error anybody sees.
+const ITEMS_MAX = 300;
 
 const label = (v: unknown) =>
   typeof v === "string" && v.length > 0 && v.length <= LABEL_MAX ? v : undefined;

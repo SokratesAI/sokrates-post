@@ -120,16 +120,17 @@ describe("the events routes", () => {
   // A full front page with the longest labels the parser accepts. The route
   // used to cap bodies at 8kb, which this exceeds -- and the client swallows
   // the error, so the cap failing here would lose every impression in silence.
-  it("accepts a full screenful at the longest labels it will store", async () => {
-    const items = Array.from({ length: 60 }, (_, i) => ({
+  // The live page is 237 stories and 26kb; this is the worst the parser stores.
+  it("accepts a full page at the longest labels it will store", async () => {
+    const items = Array.from({ length: 300 }, (_, i) => ({
       id: "art-" + i.toString(16).padStart(16, "0"),
       category: "c".repeat(80),
       topic: "t".repeat(80),
     }));
-    expect(JSON.stringify({ kind: "front-page", items }).length).toBeGreaterThan(8 * 1024);
+    expect(JSON.stringify({ kind: "front-page", items }).length).toBeGreaterThan(26 * 1024);
     await request(app()).post("/api/events").send({ kind: "front-page", items }).expect(204);
     const { body } = await request(app()).get("/api/events/summary").expect(200);
-    expect(body.shownByTopic["t".repeat(80)]).toBe(60);
+    expect(body.shownByTopic["t".repeat(80)]).toBe(300);
   });
 });
 
@@ -163,11 +164,11 @@ describe("front-page impressions", () => {
   });
 
   it("truncates rather than refusing an oversized screenful", () => {
-    const many = Array.from({ length: 90 }, (_, i) =>
+    const many = Array.from({ length: 400 }, (_, i) =>
       item("art-" + i.toString(16).padStart(16, "0")),
     );
     const e = parseEvent({ kind: "front-page", items: many });
-    expect(e!.items).toHaveLength(60);
+    expect(e!.items).toHaveLength(300);
     expect(e!.items![0].id).toBe(many[0].id);
   });
 
